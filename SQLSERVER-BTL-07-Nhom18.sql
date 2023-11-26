@@ -27,7 +27,7 @@ sTenNV nvarchar(30),
 sDiachi nvarchar(50),
 sDienthoai nvarchar(12),
 dNgaysinh datetime,
-bGioitinh bit,
+sGioitinh nvarchar(10),
 fLuong float
 );
 
@@ -63,11 +63,11 @@ values('SP001',N'Bút bi xanh',2000,100,N'Cây'),
 select*from tblSanPham;
 
 insert into tblNhanVien
-values('NV001',N'Nguyễn Văn Hưng',N'Số 1, Ngõ 1, Đường 1, Quận 1','0987654321','01/01/1990',1,5000000),
-('NV002',N'Trần Thị Mến',N'Số 2, Ngõ 2, Đường 2, Quận 2','0123456789','02/02/1991',0,8000000),
-('NV003',N'Lê Văn Cận',N'Số 3, Ngõ 3, Đường 3, Quận 3','0912345678','03/03/1992',1,7300000),
-('NV004',N'Phạm Thị Liễu',N'Số 4, Ngõ 4, Đường 4, Quận 4','0901234567','04/04/1993',0,12000000),
-('NV005',N'Hoàng Văn Thy',N'Số 5, Ngõ 5, Đường 5, Quận 5','0981234567','05/05/1994',1,4000000);
+values('NV001',N'Nguyễn Văn Hưng',N'Số 1, Ngõ 1, Đường 1, Quận 1','0987654321','01/01/1990',N'Nam',5000000),
+('NV002',N'Trần Thị Mến',N'Số 2, Ngõ 2, Đường 2, Quận 2','0123456789','02/02/1991',N'Nữ',8000000),
+('NV003',N'Lê Văn Cận',N'Số 3, Ngõ 3, Đường 3, Quận 3','0912345678','03/03/1992',N'Nam',7300000),
+('NV004',N'Phạm Thị Liễu',N'Số 4, Ngõ 4, Đường 4, Quận 4','0901234567','04/04/1993',N'Nữ',12000000),
+('NV005',N'Hoàng Văn Thy',N'Số 5, Ngõ 5, Đường 5, Quận 5','0981234567','05/05/1994',N'Nam',4000000);
 selecT*from tblNhanVien;
 
 insert into tblNhaCC
@@ -118,16 +118,24 @@ from tblNhanVien
 where fLuong > 7000000;
 select*from vThongtinNV;
 
--- 2.3. View chứa thông tin tên các sản phẩm, đơn vị tính, tổng tiền nhập có đơn vị tính là "cây"
+-- 2.3. View chứa thông tin mã phiếu nhập, tên sản phẩm, số lượng, đơn giá, thành tiền
+create view vThongtinCTPN_SP
+as
+select CTPN.sMaPN, SP.sTenSP, CTPN.fSoluongnhap, CTPN.fGianhap, fGianhap*fSoluongnhap as 'Thành tiền'
+from tblCTPhieuNhap CTPN, tblSanPham SP
+where CTPN.sMaSP = SP.sMaSP;
+select * from vThongtinCTPN_SP;
+
+-- 2.4. View chứa thông tin tên các sản phẩm, đơn vị tính, tổng tiền nhập có đơn vị tính là "cây"
 create view vThongtinSP_DVT
 as
-select sTenSP, sDonvitinh, sum(fGianhap*fSoluongnhap) as [Tổng tiền]
-from tblSanPham,tblCTPhieuNhap
-where sDonvitinh in (N'Cây') and tblSanPham.sMaSP = tblCTPhieuNhap.sMaSP
+select sTenSP, sum(fGianhap*fSoluongnhap) as [Tổng tiền]
+from tblSanPham SP,tblCTPhieuNhap PN
+where sDonvitinh in (N'Cây') and SP.sMaSP = PN.sMaSP
 group by sTenSP;
 select * from vThongtinSP_DVT;
 
--- 2.4. View chứa thông tin mã phiếu nhập, tên nhân viên và tên nhà cung cấp nhập hàng trong tháng 3-2023
+-- 2.5. View chứa thông tin mã phiếu nhập, tên nhân viên và tên nhà cung cấp nhập hàng trong tháng 3-2023
 create view vThongtinPN_NV_NCC
 as
 select PN.sMaPN, NV.sTenNV, NCC.sTenNCC
@@ -139,17 +147,59 @@ on PN.sMaNCC = NCC.sMaNCC
 where month(PN.dNgaynhaphang)=3;
 select * from vThongtinPN_NV_NCC;
 
--- 2.5. View chứa thông tin tên sản phẩm, tên nhà cung cấp với phiếu nhập có tổng tiền lớn hơn 40.000
+-- 2.6. View chứa thông tin tên sản phẩm, tên nhà cung cấp với phiếu nhập có tổng tiền nhập lớn hơn 40.000
 create view vThongtinPN_SP_NCC
 as
-select SP.sTenSP, NCC.sTenNCC, sum(CTPN.fGianhap*CTPN.fSoluongnhap) as[Tổng tiền]
+select SP.sTenSP, NCC.sTenNCC, sum(CTPN.fGianhap*CTPN.fSoluongnhap) as[Tổng tiền nhập]
 from tblSanPham SP, tblNhaCC NCC, tblCTPhieuNhap CTPN, tblPhieuNhap PN
 where CTPN.sMaSP = SP.sMaSP and PN.sMaNCC = NCC.sMaNCC and CTPN.sMaPN = PN.sMaPN
 group by sTenSP, sTenNCC
 having sum(CTPN.fGianhap*CTPN.fSoluongnhap) > 40000;
 select * from vThongtinPN_SP_NCC;
--- 2.6. View chứa thông tin thống kê số lượng nhân viên theo giới tính
--- 2.7. View chứa thông tin mã phiếu nhập, tên sản phẩm, số lượng, đơn giá, thành tiền
+
+-- 2.7. View chứa thông tin thống kê số lượng nhân viên theo giới tính
+create view vThongtinTK_GTNV
+as
+select sGioitinh as 'Giới tính', COUNT(sMaNV) as 'Số lượng'
+from tblNhanVien
+group by sGioitinh;
+select * from vThongtinTK_GTNV;
+
 -- 2.8. View chứa thông tin mã sản phẩm, tên sản phẩm, tổng số lượng, tổng thành tiền nhập vào
+create view vThongkeSP
+as
+select SP.sMaSP, sTenSP, sum(CTPN.fSoluongnhap) as 'Tổng số lượng', sum(CTPN.fSoluongnhap*CTPN.fGianhap) as 'Tổng thành tiền'
+from tblSanPham SP 
+join tblCTPhieuNhap CTPN
+on SP.sMaSP = CTPN.sMaSP
+group by SP.sMaSP, SP.sTenSP;
+select * from vThongkeSP;
+
 -- 2.9. View chứa thông tin mã nhà cung cấp, tên nhà cung cấp, tổng số lượng, tổng thành tiền
+create view vThongkeNCC
+as
+select PN.sMaNCC, NCC.sTenNCC, sum(fSoluongnhap) 'Tổng số lượng', sum(fSoluongnhap*fGianhap) as 'Tổng thành tiền'
+from tblNhaCC NCC, tblCTPhieuNhap CTPN, tblPhieuNhap PN
+where PN.sMaNCC = NCC.sMaNCC 
+and PN.sMaPN = CTPN.sMaPN
+group by PN.sMaNCC, NCC.sTenNCC;
+select * from vThongkeNCC;
+
 -- 2.10. View chứa thông tin tên nhân viên, số điện thoại, thời gian nhập hàng trong tháng 2/2023 - 4/2023, tên sản phẩm, số lượng nhập >20
+drop view vThongkeNV_Ngaynhap;
+create view vThongkeNV_Ngaynhap
+as
+select NV.sTenNV, NV.sDienthoai, PN.dNgaynhaphang, SP.sTenSP, CTPN.fSoluongnhap as 'Số lượng nhập'
+from tblNhanVien NV
+join tblPhieuNhap PN
+on NV.sMaNV = PN.sMaNV
+join tblCTPhieuNhap CTPN
+on PN.sMaPN = CTPN.sMaPN
+join tblSanPham SP
+on CTPN.sMaSP = SP.sMaSP
+where year(PN.dNgaynhaphang)=2023 and  month(PN.dNgaynhaphang) in (2,3,4)
+group by NV.sTenNV, NV.sDienthoai, SP.sTenSP, PN.dNgaynhaphang, CTPN.fSoluongnhap
+having sum(fSoluongnhap)>20;
+select * from vThongkeNV_Ngaynhap;
+
+--Câu 3: Tạo và thực thi các thủ tục cho CSDL 
