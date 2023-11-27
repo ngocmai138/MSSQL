@@ -59,9 +59,12 @@ values('SP001',N'Bút bi xanh',2000,100,N'Cây'),
 ('SP002',N'Bút bi đỏ',2000,150,N'Cây'),
 ('SP003',N'Bút chì cây 2B',1000,50,N'Cây'),
 ('SP004',N'Tẩy bút chì',3000,40,N'Cái'),
-('SP005',N'Thước kẻ 20cm',5000,80,N'Cái');
+('SP005',N'Thước kẻ 20cm',5000,80,N'Cái'),
+('SP007',N'Kéo thủ công',9000,0,N'Cái'),
+('SP008',N'Bút chì màu',30000,10,N'Hộp');
 select*from tblSanPham;
 
+delete from tblNhanVien
 insert into tblNhanVien
 values('NV001',N'Nguyễn Văn Hưng',N'Số 1, Ngõ 1, Đường 1, Quận 1','0987654321','01/01/1990',N'Nam',5000000),
 ('NV002',N'Trần Thị Mến',N'Số 2, Ngõ 2, Đường 2, Quận 2','0123456789','02/02/1991',N'Nữ',8000000),
@@ -186,7 +189,6 @@ group by PN.sMaNCC, NCC.sTenNCC;
 select * from vThongkeNCC;
 
 -- 2.10. View chứa thông tin tên nhân viên, số điện thoại, thời gian nhập hàng trong tháng 2/2023 - 4/2023, tên sản phẩm, số lượng nhập >20
-drop view vThongkeNV_Ngaynhap;
 create view vThongkeNV_Ngaynhap
 as
 select NV.sTenNV, NV.sDienthoai, PN.dNgaynhaphang, SP.sTenSP, CTPN.fSoluongnhap as 'Số lượng nhập'
@@ -203,3 +205,291 @@ having sum(fSoluongnhap)>20;
 select * from vThongkeNV_Ngaynhap;
 
 --Câu 3: Tạo và thực thi các thủ tục cho CSDL 
+-- 3.1. Thêm sản phẩm mới vào bảng sản phẩm
+create proc ThemSP
+@sMaSP nvarchar(10), @sTenSP nvarchar(30), @fGiaban nvarchar(10), @fSoluong float, @sDonvitinh nvarchar(10)
+as
+if exists(select * from tblSanPham where tblSanPham.sMaSP=@sMaSP)
+print(N'Đã tồn tại sản phẩm có mã vừa nhập vào')
+else
+begin
+insert into tblSanPham values 
+(@sMaSP, @sTenSP,@fGiaban,@fSoluong,@sDonvitinh)
+end;
+
+exec ThemSP 'SP006',N'Băng dính',4000,50,N'Cuộn';
+select * from tblSanPham;
+
+-- 3.2. Nhập vào Mã phiếu nhập, tính tổng tiền đã mua hàng
+create proc TongtienPN
+@sMaPN nvarchar(10)
+as
+begin
+if exists(select * from tblPhieuNhap where tblPhieuNhap.sMaPN = @sMaPN)
+select PN.sMaPN, sum(CTPN.fSoluongnhap*CTPN.fGianhap) as 'Tổng tiền'
+from tblCTPhieuNhap CTPN, tblPhieuNhap PN
+where PN.sMaPN = CTPN.sMaPN
+and PN.sMaPN=@sMaPN
+group by PN.sMaPN
+else print(N'Mã phiếu nhập không tồn tại')
+end;
+
+exec TongtienPN 'PN002';
+
+-- 3.3. Hiển thị sản phẩm không được mua theo tháng
+create proc SPkhongduocmua
+@Month int
+as
+select * from tblSanPham
+where tblSanPham.sMaSP
+not in
+(select ctpn.sMaSP
+from tblCTPhieuNhap ctpn, tblPhieuNhap pn
+where ctpn.sMaPN = pn.sMaPN
+and month(dNgaynhaphang)=@Month);
+execute SPkhongduocmua 4;
+
+-- 3.4. Thống kê số sản phẩm được bán với tham số truyền vào là mã sản phẩm
+create proc SPduocban
+@sMaSPduocban nvarchar(10)
+as
+if not exists(select*from tblSanPham where tblSanPham.sMaSP = @sMaSPduocban)
+print (N'Mã sản phẩm không tồn tại')
+else
+select SP.sMaSP, sTenSP, sum(CTPN.fSoluongnhap) as 'Tổng số lượng đã nhập' 
+from tblSanPham SP
+join tblCTPhieuNhap CTPN
+on SP.sMaSP = CTPN.sMaSP
+where SP.sMaSP = @sMaSPduocban
+group by SP.sMaSP, sTenSP;
+
+execute SPduocban 'SP004';
+
+-- 3.5. Cho biết SP được nhập từ 1 nhà cung cấp trong 1 năm nào đó có tham số là tên NCC và năm
+create proc NCC_nam
+@sTenNCC nvarchar(50), @iNamnhap int
+as
+if not exists (select * from tblNhaCC where sTenNCC = @sTenNCC)
+print N'Tên nhà cung cấp không tồn tại'
+else
+select sp.sMaSP, sTenSP, ncc.sTenNCC, @iNamnhap as 'Năm nhập hàng', sum(ctpn.fSoluongnhap) as 'Số lượng nhập'
+from tblSanPham sp
+join tblCTPhieuNhap ctpn
+on sp.sMaSP = ctpn.sMaSP
+join tblPhieuNhap pn
+on ctpn.sMaPN = pn.sMaPN
+join tblNhaCC ncc
+on pn.sMaNCC = ncc.sMaNCC
+where ncc.sTenNCC = @sTenNCC 
+and year(pn.dNgaynhaphang) = @iNamnhap
+group by sp.sMaSP, sTenSP, ncc.sTenNCC;
+
+execute NCC_nam 'abba', 2023;
+execute NCC_nam 'Công ty TNHH ABC', 2023;
+
+-- 3.6. Tính tổng tiền nhập hàng trong năm
+drop proc Tongtien_bantrongnam
+create proc Tongtien_bantrongnam @nam int
+as
+begin
+select year(dNgaynhaphang) as 'Năm', sum(fGianhap*fSoluongnhap) as 'Tổng số tiền nhập hàng' 
+from tblPhieuNhap pn, tblCTPhieuNhap ctpn
+where pn.sMaPN = ctpn.sMaPN and year(dNgaynhaphang) = @nam
+group by year(dNgaynhaphang)
+end;
+
+execute Tongtien_bantrongnam 2023;
+
+--Câu 4. Tạo và vận dụng các trigger
+-- 4.1. Nhân viên làm việc phải đảm bảo trên 18 tuổi
+drop trigger nv_tuoi
+create trigger nv_tuoi
+on tblNhanVien
+instead of insert
+as
+begin
+begin try
+	declare @tuoi as int;
+	select @tuoi = year(getdate()) - year((select dNgaysinh from inserted));
+	if(@tuoi<18)
+		begin 
+		raiserror (N'Tuổi của nhân viên chưa đủ 18',16,10);
+		end;
+	else
+		begin
+		insert into tblNhanVien select * from inserted;
+		end;
+end try
+begin catch
+	raiserror (N'Tuổi của nhân viên chưa đủ 18',16,10);
+	select ERROR_MESSAGE() as ErrorMessage;
+	rollback tran;
+end catch
+
+/*
+	set xact_abort off;
+	declare @tuoi as int;
+	select @tuoi = year(getdate()) - year((select dNgaysinh from inserted));
+	if(@tuoi<18)
+		begin 
+		raiserror (N'Tuổi của nhân viên chưa đủ 18',16,10);
+		if(@@TRANCOUNT >0)
+		rollback tran;
+		end
+	else
+		begin
+		insert into tblNhanVien select * from inserted;
+		if(@@TRANCOUNT >0)
+		commit tran;
+		end
+		*/
+end;
+
+insert into tblNhanVien values('NV006',N'Lý Thị Hảo',N'Số 6, Ngõ 6, Đường 6, Quận 6','0987654321','01/01/2012',N'Nữ',5000000);
+insert into tblNhanVien values('NV006',N'Lý Thị Hảo',N'Số 6, Ngõ 6, Đường 6, Quận 6','0987654321','01/01/2002',N'Nữ',5000000);
+select *from tblNhanVien
+
+-- 4.2. Đơn giá nhập của mặt hàng phải đảm bảo thấp hơn so với giá bán đã nhập
+drop trigger giaban_giagoc
+create trigger giaban_giagoc
+on tblCTPhieuNhap
+instead of insert
+as
+begin
+begin try
+declare @sMaSP as nvarchar(10)
+declare @fGianhap as float
+declare @fGiaban as float
+select @sMaSP = (select sMaSP from inserted), @fGianhap = (select fGianhap from inserted)
+if not exists (select * from tblCTPhieuNhap where sMaSP=@sMaSP)
+	begin 
+	raiserror(N'Mã sản phẩm không tồn tại',16,10)
+	end
+else
+	begin
+	select @fGiaban = (select fGiaban from tblSanPham where sMaSP = @sMaSP)
+	if(@fGianhap > @fGiaban)
+		begin
+		raiserror(N'Giá nhập cao hơn giá bán',16,11)
+		end
+	else
+		begin
+		insert into tblCTPhieuNhap select * from inserted;	
+		end
+	end
+end try
+begin catch
+	raiserror(N'Mã sản phẩm không tồn tại hoặc giá nhập cao hơn giá bán',16,10)
+	rollback tran;
+end catch;
+end;
+
+insert into tblCTPhieuNhap values('PN005','SP004',5500,20);
+insert into tblCTPhieuNhap values('PN005','SP004',1000,20);
+select * from tblCTPhieuNhap
+
+-- 4.3. Khi xóa một mặt hàng nào đó thì không cho phép xóa nếu số lượng tồn kho lớn hơn 0
+drop trigger SP_Xoa
+create trigger SP_Xoa
+on tblSanPham
+instead of delete
+as
+begin
+begin try
+declare @sMaSP as nvarchar(10)
+select @sMaSP = (select sMaSP from deleted)
+if((select fSoluongtonkho from tblSanPham where sMaSP=@sMaSP)>0)
+	begin
+	raiserror(N'Số hàng tồn kho > 0',16,10)
+	end
+else
+	begin
+	delete from tblSanPham where sMaSP = @sMaSP
+	end
+end try
+begin catch
+	raiserror(N'Số hàng tồn kho > 0',16,10)
+	rollback tran;
+end catch
+end;
+
+select * from tblSanPham;
+delete from tblSanPham where sMaSP = 'SP007';
+delete from tblSanPham where sMaSP = 'SP008';
+
+-- 4.4. Tự động cập nhật số lượng tồn kho cho một sản phẩm khi có một phiếu nhập hàng chứa sản phẩm được thêm vào bảng chi tiết phiếu nhập
+drop trigger SP_Soluonghangtonkho
+create trigger SP_Soluonghangtonkho
+on tblCTPhieuNhap
+after insert
+as
+begin
+	update tblSanPham set fSoluongtonkho = fSoluongtonkho + i.fSoluongnhap
+	from tblSanPham sp, inserted i
+	where sp.sMaSP = i.sMaSP
+end;
+
+select * from tblCTPhieuNhap;
+select * from tblSanPham;
+insert into tblCTPhieuNhap values ('PN002','SP001',1500,50);
+
+-- 4.5. Tự động xóa bản ghi trong tblPhieuNhap khi không có bản ghi nào trong tblCTPhieuNhap có cùng mã phiếu nhập
+create trigger PhieuNhap_Xoa
+on tblCTPhieuNhap
+after delete
+as
+begin
+delete from tblPhieuNhap
+where sMaPN not in (select sMaPN from tblCTPhieuNhap)
+end
+
+insert into tblCTPhieuNhap values('PN006','SP001',1500,10)
+insert into tblPhieuNhap values('PN006','NV005','NCC001','09-3-2022')
+
+delete from tblCTPhieuNhap where sMaPN='PN006'
+
+select*from tblPhieuNhap
+
+--Câu 5. Phân quyền và bảo mật cho CSDL
+-- Tạo người dùng
+create login User1 with password='123';
+create user User1 for login User1;
+
+create login User2 with password = '456';
+create user User2 for login User2;
+
+-- Phân quyền cho bảng
+grant select, insert, update, delete on tblSanPham to User1;
+grant select, insert, update, delete on tblNhanVien to User1;
+grant select, insert, update, delete on tblNhaCC to User1;
+grant select, insert, update, delete on tblPhieuNhap to User1;
+grant select, insert, update, delete on tblCTPhieuNhap to User1;
+
+grant select, insert, update, delete on tblSanPham to User2;
+grant select on tblNhanVien to User2;
+grant select on tblNhaCC to User2;
+grant select on tblPhieuNhap to User2;
+grant select on tblCTPhieuNhap to User2;
+
+-- Phân quyền cho view
+grant select on vThongtinSP to User1;
+grant select on vThongtinSP to User2;
+grant select on vThongtinNV to User2;
+grant select on vThongtinCTPN_SP to User2;
+grant select on vThongtinSP_DVT to User2;
+grant select on vThongtinPN_NV_NCC to User2;
+grant select on vThongtinPN_SP_NCC to User2;
+grant select on vThongtinTK_GTNV to User2;
+grant select on vThongkeSP to User2;
+grant select on vThongkeNCC to User2;
+grant select on vThongkeNV_Ngaynhap to User2;
+
+
+-- Phân quyền cho procedure
+grant execute on ThemSP to User1;
+grant execute on TongtienPN to User1;
+grant execute on SPkhongduocmua to User2;
+grant execute on SPduocban to User2;
+grant execute on NCC_nam to User2;
+
+-- Câu 6. Phân tán
