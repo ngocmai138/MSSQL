@@ -1,7 +1,4 @@
-﻿use QLCH_MayTinh
-drop database QlyNhapHang
-
---Câu 1. Xác định các bảng và Tạo CSDL của bài toán
+﻿--Câu 1. Xác định các bảng và Tạo CSDL của bài toán
 -- Tạo và sử dụng csdl
 create database QlyNhapHang
 on(name = QLNhapHang_Data,
@@ -64,7 +61,6 @@ values('SP001',N'Bút bi xanh',2000,100,N'Cây'),
 ('SP008',N'Bút chì màu',30000,10,N'Hộp');
 select*from tblSanPham;
 
-delete from tblNhanVien
 insert into tblNhanVien
 values('NV001',N'Nguyễn Văn Hưng',N'Số 1, Ngõ 1, Đường 1, Quận 1','0987654321','01/01/1990',N'Nam',5000000),
 ('NV002',N'Trần Thị Mến',N'Số 2, Ngõ 2, Đường 2, Quận 2','0123456789','02/02/1991',N'Nữ',8000000),
@@ -247,6 +243,7 @@ not in
 from tblCTPhieuNhap ctpn, tblPhieuNhap pn
 where ctpn.sMaPN = pn.sMaPN
 and month(dNgaynhaphang)=@Month);
+
 execute SPkhongduocmua 4;
 
 -- 3.4. Thống kê số sản phẩm được bán với tham số truyền vào là mã sản phẩm
@@ -325,24 +322,6 @@ begin catch
 	select ERROR_MESSAGE() as ErrorMessage;
 	rollback tran;
 end catch
-
-/*
-	set xact_abort off;
-	declare @tuoi as int;
-	select @tuoi = year(getdate()) - year((select dNgaysinh from inserted));
-	if(@tuoi<18)
-		begin 
-		raiserror (N'Tuổi của nhân viên chưa đủ 18',16,10);
-		if(@@TRANCOUNT >0)
-		rollback tran;
-		end
-	else
-		begin
-		insert into tblNhanVien select * from inserted;
-		if(@@TRANCOUNT >0)
-		commit tran;
-		end
-		*/
 end;
 
 insert into tblNhanVien values('NV006',N'Lý Thị Hảo',N'Số 6, Ngõ 6, Đường 6, Quận 6','0987654321','01/01/2012',N'Nữ',5000000);
@@ -389,7 +368,6 @@ insert into tblCTPhieuNhap values('PN005','SP004',1000,20);
 select * from tblCTPhieuNhap
 
 -- 4.3. Khi xóa một mặt hàng nào đó thì không cho phép xóa nếu số lượng tồn kho lớn hơn 0
-drop trigger SP_Xoa
 create trigger SP_Xoa
 on tblSanPham
 instead of delete
@@ -418,7 +396,6 @@ delete from tblSanPham where sMaSP = 'SP007';
 delete from tblSanPham where sMaSP = 'SP008';
 
 -- 4.4. Tự động cập nhật số lượng tồn kho cho một sản phẩm khi có một phiếu nhập hàng chứa sản phẩm được thêm vào bảng chi tiết phiếu nhập
-drop trigger SP_Soluonghangtonkho
 create trigger SP_Soluonghangtonkho
 on tblCTPhieuNhap
 after insert
@@ -474,15 +451,15 @@ grant select on tblCTPhieuNhap to User2;
 -- Phân quyền cho view
 grant select on vThongtinSP to User1;
 grant select on vThongtinSP to User2;
-grant select on vThongtinNV to User2;
-grant select on vThongtinCTPN_SP to User2;
-grant select on vThongtinSP_DVT to User2;
-grant select on vThongtinPN_NV_NCC to User2;
-grant select on vThongtinPN_SP_NCC to User2;
-grant select on vThongtinTK_GTNV to User2;
-grant select on vThongkeSP to User2;
-grant select on vThongkeNCC to User2;
-grant select on vThongkeNV_Ngaynhap to User2;
+grant select on vThongtinNV to User1;
+grant select on vThongtinCTPN_SP to User1;
+grant select on vThongtinSP_DVT to User1;
+grant select on vThongtinPN_NV_NCC to User1;
+grant select on vThongtinPN_SP_NCC to User1;
+grant select on vThongtinTK_GTNV to User1;
+grant select on vThongkeSP to User1;
+grant select on vThongkeNCC to User1;
+grant select on vThongkeNV_Ngaynhap to User1;
 
 
 -- Phân quyền cho procedure
@@ -492,4 +469,61 @@ grant execute on SPkhongduocmua to User2;
 grant execute on SPduocban to User2;
 grant execute on NCC_nam to User2;
 
--- Câu 6. Phân tán
+-- Câu 6. Phân tán:
+/*
+Tạo các bảng ở trên 2 server:
+Server1: 
+	- các sản phẩm có fGiaban >3000
+	- Thông tin cá nhân của nhân viên gồm: sMaNV, sTenNV, sDiachi, sDienthoai, dNgaysinh, sGioitinh
+
+Server2:
+	- các sản phẩm có fGiaban <=3000
+	- Thông tin lương của nhân viên gồm: sMaNV, fLuong
+	- Thôn tin của tblPhieuNhap và tblCTPhieuNhap
+*/
+
+--Kết nối từ Server 1 đến Server 2
+exec sp_addlinkedserver
+@server = 'Server1',
+@srvproduct = 'SQLServer',
+@provider = 'SQLOLEDB',
+@datasrc = 'Server1\QlyNhapHang';
+
+exec dbo.sp_addlinkedsrvlogin
+@rmtsrvname = 'Server2',
+@rmtuser = 'sa',
+@rmtpassword = '123';
+
+-- Thủ tục thêm mới nhân viên vào tblNhanVien
+create synonym tblNhanVienS2 for Server2.QlyNhapHang.dbo.tblNhanVien
+create Proc spThemNV(
+@sMaNV nvarchar(10),
+@sTenNV nvarchar(30), 
+@sDiachi nvarchar(50),
+@sDienthoai nvarchar(12), 
+@dNgaysinh datetime, 
+@sGioitinh nvarchar(10), 
+@fLuong float )
+as
+begin
+	if exists (select*from tblNhanVien where sMaNV = @sMaNV)
+		begin
+		print N'Mã khách hàng đã tồn tại'
+		end
+	Insert into tblNhanVien values(@sMaNV, @sTenNV, @sDiachi, @sDienthoai, @dNgaysinh, @sGioitinh)
+	Insert into tblNhanVienS2 values(@sMaNV, @fLuong)
+	print N'Thêm thành công'
+end;
+execute spThemNV 'NV009','Phạm Thị Hường', 'Nhà 9, Phường 9, Quận 9', '0978899001', '1/1/2000', N'Nữ', 5000000;
+
+-- View xem thông tin sản phẩm 
+create synonym tblSanPhamS2 for Server2.QlyNhapHang.dbo.tblSanPham
+create view ttSanPham
+as
+begin
+	select * 
+	from tblSanPham2 sp2, tblSanPham sp1
+	where sp2.sMaSP = sp1.sMaSP
+end;
+
+select * from ttSanPham;
